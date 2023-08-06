@@ -20,6 +20,7 @@ class Shanyrak(Base):
 
     user = relationship("User", back_populates="shanyrak")
     comments = relationship("Comment", back_populates="shanyraks")
+    favorites = relationship("Favorite", back_populates="shanyraks")
 
 class ShanyrakRequest(BaseModel):
     type: str
@@ -86,3 +87,19 @@ class ShanyrakRepository():
             db.execute(pro)
             db.commit()
         return shanyrak
+    
+    def filter(self, db: Session, limit: int, offset: int, type: str=None, 
+                rooms_count: int=None, price_from: int=None, price_until: int=None):
+        
+        query = db.query(Shanyrak)
+
+        if type:
+            query = query.filter(Shanyrak.type == type)
+        if rooms_count:
+            query = query.filter(Shanyrak.room_count == rooms_count)
+        if price_from:
+            query = query.filter(Shanyrak.price >= price_from)
+        if price_until:
+            query = query.filter(Shanyrak.price <= price_until)
+
+        return query.offset(offset).limit(limit).all()

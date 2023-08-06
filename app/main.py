@@ -5,6 +5,7 @@ from fastapi.security import OAuth2PasswordBearer
 from .user_repository import UserRequest, UserRepository, UserUpdateRequest, UserResponse
 from .shanyrak_repository import ShanyrakRepository, ShanyrakRequest, ShanyrakResponse
 from .comments_repository import CommentRequest, CommentsRepository, CommentResponse
+from .favorites_repository import FavoritesRepository
 
 from sqlalchemy.orm import Session
 from .database import SessionLocal, Base, engine
@@ -17,6 +18,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/users/login")
 users = UserRepository()
 shanyraks = ShanyrakRepository()
 comments_repo = CommentsRepository()
+favorites_repo = FavoritesRepository()
 
 def get_db():
     db = SessionLocal()
@@ -72,6 +74,15 @@ def post_shanyraks(shanyrak: ShanyrakRequest, token: str=Depends(oauth2_scheme),
     user_id = decode_jwt(token)
     shanyrak_id = shanyraks.save(db, shanyrak, user_id)
     return {"id":shanyrak_id}
+
+@app.get("/shanyraks")
+def get_shanyraks(limit: int=10, offset: int=10, type: str=None, rooms_count: int=None, 
+                  price_from: int=None, price_until: int=None, token: str=Depends(oauth2_scheme), 
+                   db: Session=Depends(get_db)):
+    shanyraks_list = shanyraks.filter(db, limit, offset, type, rooms_count, price_from, price_until)
+    total = len(shanyraks_list)
+    return {"total": total, "objects": shanyraks_list}
+
 
 @app.get("/shanyraks/{id}", response_model=ShanyrakResponse)
 def get_shanyrak(id: int, token: str=Depends(oauth2_scheme), 
@@ -136,14 +147,45 @@ def patch_comment(comment_id: int, new_comment: CommentRequest,
 def delete_shanyrak(comment_id: int, id: int,
                     token: str=Depends(oauth2_scheme), db: Session=Depends(get_db)):
     comment = comments_repo.get_comments_by_id(db, comment_id)
+    shanyrak = shanyraks.get_shanyrak(db, id)
     user_id = decode_jwt(token)
-    if not comment:
+    if not comment or not shanyrak:
         raise HTTPException(status_code=404, detail="Not Found")
-    if comment.author_id != user_id:
+    if comment.author_id != user_id and user_id != shanyrak.user_id:
         raise HTTPException(status_code=403, detail="Forbidden")
     
     comments_repo.delete(db, comment)
     shanyraks.minus_total_comment(db, id)
     return Response()
+
+@app.post("/auth/users/favorites/shanyraks/{id}")
+def post_favorites(id: int, token: str=Depends(oauth2_scheme), 
+                   db: Session=Depends(get_db)):
+    shanyrak = shanyraks.get_shanyrak(db, id)
+    if not shanyrak:
+        raise HTTPException(status_code=404, detail="Not Found")
+    
+    user_id = decode_jwt(token)
+    if favorites_repo.check(db, user_id, id):
+        raise HTTPException(status_code=400, detail="This post already in favorites")
+    favorites_repo.save(db, user_id, id)
+    return Response()
+
+@app.get("/auth/users/favorites/shanyraks")
+def get_favorites(token: str=Depends(oauth2_scheme), db: Session=Depends(get_db)):
+    user_id = decode_jwt(token)
+    favorites = favorites_repo.get_favorites(db, user_id)
+    return {"shanyraks": favorites}
+
+@app.delete("/auth/users/favorites/shanyraks/{id}")
+def delete_favorite(id: int, token: str=Depends(oauth2_scheme), db: Session=Depends(get_db)):
+    user_id = decode_jwt(token)
+    deleted = favorites_repo.delete(db, user_id, id)
+    if deleted == False:
+        raise HTTPException(status_code=404, detail="Not Found")
+    return Response()
+    
+    
+
 
     

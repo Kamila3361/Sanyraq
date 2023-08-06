@@ -17,6 +17,7 @@ class User(Base):
 
     shanyrak = relationship("Shanyrak", back_populates="user")
     comments = relationship("Comment", back_populates="author")
+    favorites = relationship("Favorite", back_populates="author")
 
 class UserRequest(BaseModel):
     username: str
